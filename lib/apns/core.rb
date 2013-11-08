@@ -36,7 +36,7 @@ module APNS
 
     notifications.each do |notification|
       # Each notification frame consists of
-      # 1. (e.g. protocol version) 2 (unsigned char [1 byte]) 
+      # 1. (e.g. protocol version) 2 (unsigned char [1 byte])
       # 2. size of the full frame (unsigend int [4 byte], big endian)
       pn = notification.packaged_notification
       bytes << ([2, pn.bytesize].pack('CN') + pn)
@@ -63,13 +63,22 @@ module APNS
 
   protected
 
+  def self.pem_contents
+    if !self.pem
+      raise "The path to, or contents of your pem file is not set."
+    elsif self.pem.respond_to?(:read)
+      self.pem.read
+    else
+      File.read(self.pem)
+    end
+  end
+
   def self.open_connection
-    raise "The path to your pem file is not set. (APNS.pem = /path/to/cert.pem)" unless self.pem
-    raise "The path to your pem file does not exist!" unless File.exist?(self.pem)
+    pem = self.pem_contents
 
     context      = OpenSSL::SSL::SSLContext.new
-    context.cert = OpenSSL::X509::Certificate.new(File.read(self.pem))
-    context.key  = OpenSSL::PKey::RSA.new(File.read(self.pem), self.pass)
+    context.cert = OpenSSL::X509::Certificate.new(pem)
+    context.key  = OpenSSL::PKey::RSA.new(pem, self.pass)
 
     sock         = TCPSocket.new(self.host, self.port)
     ssl          = OpenSSL::SSL::SSLSocket.new(sock,context)
@@ -79,15 +88,13 @@ module APNS
   end
 
   def self.feedback_connection
-    raise "The path to your pem file is not set. (APNS.pem = /path/to/cert.pem)" unless self.pem
-    raise "The path to your pem file does not exist!" unless File.exist?(self.pem)
+    pem = self.pem_contents
 
     context      = OpenSSL::SSL::SSLContext.new
-    context.cert = OpenSSL::X509::Certificate.new(File.read(self.pem))
-    context.key  = OpenSSL::PKey::RSA.new(File.read(self.pem), self.pass)
+    context.cert = OpenSSL::X509::Certificate.new(pem)
+    context.key  = OpenSSL::PKey::RSA.new(pem, self.pass)
 
     fhost = self.host.gsub('gateway','feedback')
-    puts fhost
 
     sock         = TCPSocket.new(fhost, 2196)
     ssl          = OpenSSL::SSL::SSLSocket.new(sock,context)
