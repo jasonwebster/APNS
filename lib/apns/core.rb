@@ -5,101 +5,104 @@ module APNS
 
   @host = 'gateway.sandbox.push.apple.com'
   @port = 2195
-  # openssl pkcs12 -in mycert.p12 -out client-cert.pem -nodes -clcerts
-  @pem = nil # this should be the path of the pem file not the contentes
-  @pass = nil
 
   class << self
-    attr_accessor :host, :pem, :port, :pass
-  end
+    attr_accessor :host, :cert, :key, :port, :pass
 
-  def self.send_notification(device_token, message)
-    n = APNS::Notification.new(device_token, message)
-    self.send_notifications([n])
-  end
-
-  def self.send_notifications(notifications)
-    sock, ssl = self.open_connection
-
-    packed_nofications = self.packed_nofications(notifications)
-
-    notifications.each do |n|
-      ssl.write(packed_nofications)
+    def send_notification(device_token, message)
+      n = APNS::Notification.new(device_token, message)
+      self.send_notifications([n])
     end
 
-    ssl.close
-    sock.close
-  end
+    def send_notifications(notifications)
+      sock, ssl = self.open_connection
 
-  def self.packed_nofications(notifications)
-    bytes = ''
+      packed_nofications = self.packed_nofications(notifications)
 
-    notifications.each do |notification|
-      # Each notification frame consists of
-      # 1. (e.g. protocol version) 2 (unsigned char [1 byte])
-      # 2. size of the full frame (unsigend int [4 byte], big endian)
-      pn = notification.packaged_notification
-      bytes << ([2, pn.bytesize].pack('CN') + pn)
+      notifications.each do |n|
+        ssl.write(packed_nofications)
+      end
+
+      ssl.close
+      sock.close
     end
 
-    bytes
-  end
+    def packed_nofications(notifications)
+      bytes = ''
 
-  def self.feedback
-    sock, ssl = self.feedback_connection
+      notifications.each do |notification|
+        # Each notification frame consists of
+        # 1. (e.g. protocol version) 2 (unsigned char [1 byte])
+        # 2. size of the full frame (unsigend int [4 byte], big endian)
+        pn = notification.packaged_notification
+        bytes << ([2, pn.bytesize].pack('CN') + pn)
+      end
 
-    apns_feedback = []
-
-    while message = ssl.read(38)
-      timestamp, token_size, token = message.unpack('N1n1H*')
-      apns_feedback << [Time.at(timestamp), token]
+      bytes
     end
 
-    ssl.close
-    sock.close
+    def feedback
+      sock, ssl = self.feedback_connection
 
-    return apns_feedback
-  end
+      apns_feedback = []
 
-  protected
+      while message = ssl.read(38)
+        timestamp, token_size, token = message.unpack('N1n1H*')
+        apns_feedback << [Time.at(timestamp), token]
+      end
 
-  def self.pem_contents
-    if !self.pem
-      raise "The path to, or contents of your pem file is not set."
-    elsif self.pem.respond_to?(:read)
-      self.pem.read
-    else
-      File.read(self.pem)
+      ssl.close
+      sock.close
+
+      apns_feedback
     end
-  end
 
-  def self.open_connection
-    pem = self.pem_contents
+    protected
 
-    context      = OpenSSL::SSL::SSLContext.new
-    context.cert = OpenSSL::X509::Certificate.new(pem)
-    context.key  = OpenSSL::PKey::RSA.new(pem, self.pass)
+    def read_cert
+      if !cert
+        raise "The path to, or contents of, your cert file is not set."
+      elsif cert.respond_to?(:read)
+        cert.read
+      else
+        File.read(cert)
+      end
+    end
 
-    sock         = TCPSocket.new(self.host, self.port)
-    ssl          = OpenSSL::SSL::SSLSocket.new(sock,context)
-    ssl.connect
+    def read_key
+      if !key
+        raise "The path to, or contents of, your key file is not set."
+      elsif key.respond_to?(:read)
+        key.read
+      else
+        File.read(key)
+      end
+    end
 
-    return sock, ssl
-  end
+    def ssl_context
+      context      = OpenSSL::SSL::SSLContext.new
+      context.cert = OpenSSL::X509::Certificate.new(read_cert)
+      context.key  = OpenSSL::PKey::RSA.new(read_key, self.pass)
+      context
+    end
 
-  def self.feedback_connection
-    pem = self.pem_contents
+    def open_connection
+      sock         = TCPSocket.new(self.host, self.port)
+      ssl          = OpenSSL::SSL::SSLSocket.new(sock, ssl_context)
+      ssl.connect
 
-    context      = OpenSSL::SSL::SSLContext.new
-    context.cert = OpenSSL::X509::Certificate.new(pem)
-    context.key  = OpenSSL::PKey::RSA.new(pem, self.pass)
+      [sock, ssl]
+    end
 
-    fhost = self.host.gsub('gateway','feedback')
+    def feedback_connection
+      fhost = self.host.gsub('gateway','feedback')
 
-    sock         = TCPSocket.new(fhost, 2196)
-    ssl          = OpenSSL::SSL::SSLSocket.new(sock,context)
-    ssl.connect
+      sock         = TCPSocket.new(fhost, 2196)
+      ssl          = OpenSSL::SSL::SSLSocket.new(sock, ssl_context)
+      ssl.connect
 
-    return sock, ssl
+      [sock, ssl]
+    end
+
   end
 end
