@@ -57,32 +57,28 @@ module APNS
       apns_feedback
     end
 
+    def cert=(pem)
+      @cert = if pem.respond_to?(:read)
+        pem.read
+      else
+        File.read(pem)
+      end
+    end
+
+    def key=(pem)
+      @key = if pem.respond_to?(:read)
+        pem.read
+      else
+        File.read(pem)
+      end
+    end
+
     protected
-
-    def read_cert
-      if !cert
-        raise "The path to, or contents of, your cert file is not set."
-      elsif cert.respond_to?(:read)
-        cert.read
-      else
-        File.read(cert)
-      end
-    end
-
-    def read_key
-      if !key
-        raise "The path to, or contents of, your key file is not set."
-      elsif key.respond_to?(:read)
-        key.read
-      else
-        File.read(key)
-      end
-    end
 
     def ssl_context
       context      = OpenSSL::SSL::SSLContext.new
-      context.cert = OpenSSL::X509::Certificate.new(read_cert)
-      context.key  = OpenSSL::PKey::RSA.new(read_key, self.pass)
+      context.cert = OpenSSL::X509::Certificate.new(cert)
+      context.key  = OpenSSL::PKey::RSA.new(key, self.pass)
       context
     end
 
